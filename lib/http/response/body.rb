@@ -38,6 +38,7 @@ module HTTP
         end
       end
 
+      # @return [String] what _was_ in @contents before to_s raised due to an invalid response
       def partial_to_s
         @partial_contents
       end

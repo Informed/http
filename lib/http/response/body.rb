@@ -38,6 +38,10 @@ module HTTP
         end
       end
 
+      def partial_to_s
+        @partial_contents
+      end
+
       # @return [String] eagerly consume the entire body as a string
       def to_s
         return @contents if @contents
@@ -53,6 +57,7 @@ module HTTP
             chunk.clear # deallocate string
           end
         rescue
+          @partial_contents = @contents.dup
           @contents = nil
           raise
         end

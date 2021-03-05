@@ -25,7 +25,7 @@ module HTTP
     end
 
     # Make an HTTP request
-    def request(verb, uri, opts = {}) # rubocop:disable Style/OptionHash
+    def request(verb, uri, opts = {})
       opts = @default_options.merge(opts)
       req = build_request(verb, uri, opts)
       res = perform(req, opts)
@@ -37,7 +37,7 @@ module HTTP
     end
 
     # Prepare an HTTP request
-    def build_request(verb, uri, opts = {}) # rubocop:disable Style/OptionHash
+    def build_request(verb, uri, opts = {})
       opts    = @default_options.merge(opts)
       uri     = make_request_uri(uri, opts)
       headers = make_request_headers(opts)
@@ -70,20 +70,18 @@ module HTTP
 
       @connection ||= HTTP::Connection.new(req, options)
 
-      unless @connection.failed_proxy_connect?
-        @connection.send_request(req)
-        @connection.read_headers!
+      begin
+        unless @connection.failed_proxy_connect?
+          @connection.send_request(req)
+          @connection.read_headers!
+        end
+      rescue Error => e
+        options.features.each_value do |feature|
+          feature.on_error(req, e)
+        end
+        raise
       end
-
-      res = Response.new(
-        :status        => @connection.status_code,
-        :version       => @connection.http_version,
-        :headers       => @connection.headers,
-        :proxy_headers => @connection.proxy_response_headers,
-        :connection    => @connection,
-        :encoding      => options.encoding,
-        :uri           => req.uri
-      )
+      res = build_response(req, options)
 
       res = options.features.inject(res) do |response, (_name, feature)|
         feature.wrap_response(response)
@@ -99,26 +97,38 @@ module HTTP
     end
 
     def close
-      @connection.close if @connection
+      @connection&.close
       @connection = nil
       @state = :clean
     end
 
     private
 
+    def build_response(req, options)
+      Response.new(
+        :status        => @connection.status_code,
+        :version       => @connection.http_version,
+        :headers       => @connection.headers,
+        :proxy_headers => @connection.proxy_response_headers,
+        :connection    => @connection,
+        :encoding      => options.encoding,
+        :request       => req
+      )
+    end
+
     # Verify our request isn't going to be made against another URI
     def verify_connection!(uri)
       if default_options.persistent? && uri.origin != default_options.persistent
         raise StateError, "Persistence is enabled for #{default_options.persistent}, but we got #{uri.origin}"
+      end
+
       # We re-create the connection object because we want to let prior requests
       # lazily load the body as long as possible, and this mimics prior functionality.
-      elsif @connection && (!@connection.keep_alive? || @connection.expired?)
-        close
+      return close if @connection && (!@connection.keep_alive? || @connection.expired?)
+
       # If we get into a bad state (eg, Timeout.timeout ensure being killed)
       # close the connection to prevent potential for mixed responses.
-      elsif @state == :dirty
-        close
-      end
+      return close if @state == :dirty
     end
 
     # Merges query params if needed
@@ -165,7 +175,7 @@ module HTTP
       when opts.body
         opts.body
       when opts.form
-        form = HTTP::FormData.create opts.form
+        form = make_form_data(opts.form)
         headers[Headers::CONTENT_TYPE] ||= form.content_type
         form
       when opts.json
@@ -173,6 +183,13 @@ module HTTP
         headers[Headers::CONTENT_TYPE] ||= "application/json; charset=#{body.encoding.name}"
         body
       end
+    end
+
+    def make_form_data(form)
+      return form if form.is_a? HTTP::FormData::Multipart
+      return form if form.is_a? HTTP::FormData::Urlencoded
+
+      HTTP::FormData.create(form)
     end
   end
 end

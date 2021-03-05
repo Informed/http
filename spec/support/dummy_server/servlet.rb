@@ -156,7 +156,7 @@ class DummyServer < WEBrick::HTTPServer
       res.status = 200
 
       res.body = case req["Accept-Encoding"]
-                 when "gzip" then
+                 when "gzip"
                    res["Content-Encoding"] = "gzip"
                    StringIO.open do |out|
                      Zlib::GzipWriter.wrap(out) do |gz|
@@ -165,12 +165,24 @@ class DummyServer < WEBrick::HTTPServer
                        out.tap(&:rewind).read
                      end
                    end
-                 when "deflate" then
+                 when "deflate"
                    res["Content-Encoding"] = "deflate"
                    Zlib::Deflate.deflate("#{req.body}-deflated")
                  else
                    "#{req.body}-raw"
                  end
+    end
+
+    post "/no-content-204" do |req, res|
+      res.status = 204
+      res.body   = ""
+
+      case req["Accept-Encoding"]
+      when "gzip"
+        res["Content-Encoding"] = "gzip"
+      when "deflate"
+        res["Content-Encoding"] = "deflate"
+      end
     end
   end
 end

@@ -46,7 +46,10 @@ module HTTP
       :patch,
 
       # draft-reschke-webdav-search: WebDAV Search
-      :search
+      :search,
+
+      # RFC 4791: Calendaring Extensions to WebDAV -- CalDAV
+      :mkcalendar
     ].freeze
 
     # Allowed schemes
@@ -213,7 +216,7 @@ module HTTP
 
     # @return [String] Default host (with port if needed) header value.
     def default_host_header_value
-      PORTS[@scheme] != port ? "#{host}:#{port}" : host
+      PORTS[@scheme] == port ? host : "#{host}:#{port}"
     end
 
     def prepare_body(body)
@@ -223,8 +226,8 @@ module HTTP
     def prepare_headers(headers)
       headers = HTTP::Headers.coerce(headers || {})
 
-      headers[Headers::HOST]        ||= default_host_header_value
-      headers[Headers::USER_AGENT]  ||= USER_AGENT
+      headers[Headers::HOST]       ||= default_host_header_value
+      headers[Headers::USER_AGENT] ||= USER_AGENT
 
       headers
     end

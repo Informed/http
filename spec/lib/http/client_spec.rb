@@ -8,39 +8,50 @@ require "support/ssl_helper"
 RSpec.describe HTTP::Client do
   run_server(:dummy) { DummyServer.new }
 
-  StubbedClient = Class.new(HTTP::Client) do
-    def perform(request, options)
-      stubs.fetch(request.uri) { super(request, options) }
-    end
-
-    def stubs
-      @stubs ||= {}
-    end
-
-    def stub(stubs)
-      @stubs = stubs.each_with_object({}) do |(k, v), o|
-        o[HTTP::URI.parse k] = v
+  before do
+    stubbed_client = Class.new(HTTP::Client) do
+      def perform(request, options)
+        stubbed = stubs[HTTP::URI::NORMALIZER.call(request.uri).to_s]
+        stubbed ? stubbed.call(request) : super(request, options)
       end
 
-      self
+      def stubs
+        @stubs ||= {}
+      end
+
+      def stub(stubs)
+        @stubs = stubs.transform_keys do |k|
+          HTTP::URI::NORMALIZER.call(k).to_s
+        end
+
+        self
+      end
     end
-  end
 
-  def redirect_response(location, status = 302)
-    HTTP::Response.new(
-      :status  => status,
-      :version => "1.1",
-      :headers => {"Location" => location},
-      :body    => ""
-    )
-  end
+    def redirect_response(location, status = 302)
+      lambda do |request|
+        HTTP::Response.new(
+          :status  => status,
+          :version => "1.1",
+          :headers => {"Location" => location},
+          :body    => "",
+          :request => request
+        )
+      end
+    end
 
-  def simple_response(body, status = 200)
-    HTTP::Response.new(
-      :status  => status,
-      :version => "1.1",
-      :body    => body
-    )
+    def simple_response(body, status = 200)
+      lambda do |request|
+        HTTP::Response.new(
+          :status  => status,
+          :version => "1.1",
+          :body    => body,
+          :request => request
+        )
+      end
+    end
+
+    stub_const("StubbedClient", stubbed_client)
   end
 
   describe "following redirects" do
@@ -98,9 +109,8 @@ RSpec.describe HTTP::Client do
       end
 
       it "works like a charm in real world" do
-        url    = "http://git.io/jNeY"
-        client = HTTP.follow
-        expect(client.get(url).to_s).to include "support for non-ascii URIs"
+        expect(HTTP.follow.get("https://bit.ly/2UaBT4R").parse(:json)).
+          to include("url" => "https://httpbin.org/anything/könig")
       end
     end
   end
@@ -190,6 +200,22 @@ RSpec.describe HTTP::Client do
 
       client.get("http://example.com/", :form => {:foo => HTTP::FormData::Part.new("content")})
     end
+
+    context "when passing an HTTP::FormData object directly" do
+      it "creates url encoded form data object" do
+        client    = HTTP::Client.new
+        form_data = HTTP::FormData::Multipart.new({ :foo => "bar" })
+
+        allow(client).to receive(:perform)
+
+        expect(HTTP::Request).to receive(:new) do |opts|
+          expect(opts[:body]).to be form_data
+          expect(opts[:body].to_s).to match(/^Content-Disposition: form-data; name="foo"\r\n\r\nbar\r\n/m)
+        end
+
+        client.get("http://example.com/", :form => form_data)
+      end
+    end
   end
 
   describe "passing json" do
@@ -213,9 +239,9 @@ RSpec.describe HTTP::Client do
       end
 
       it "works like a charm in real world" do
-        url     = "https://github.com/httprb/http.rb/pull/197/ö無"
-        client  = HTTP.follow
-        expect(client.get(url).to_s).to include "support for non-ascii URIs"
+        url = "https://httpbin.org/anything/ö無"
+
+        expect(HTTP.follow.get(url).parse(:json)).to include("url" => url)
       end
     end
 
@@ -264,6 +290,61 @@ RSpec.describe HTTP::Client do
         end
       end
     end
+
+    context "Feature" do
+      let(:feature_class) do
+        Class.new(HTTP::Feature) do
+          attr_reader :captured_request, :captured_response, :captured_error
+
+          def wrap_request(request)
+            @captured_request = request
+          end
+
+          def wrap_response(response)
+            @captured_response = response
+          end
+
+          def on_error(request, error)
+            @captured_request = request
+            @captured_error = error
+          end
+        end
+      end
+      it "is given a chance to wrap the Request" do
+        feature_instance = feature_class.new
+
+        response = client.use(:test_feature => feature_instance).
+                   request(:get, dummy.endpoint)
+
+        expect(response.code).to eq(200)
+        expect(feature_instance.captured_request.verb).to eq(:get)
+        expect(feature_instance.captured_request.uri.to_s).to eq("#{dummy.endpoint}/")
+      end
+
+      it "is given a chance to wrap the Response" do
+        feature_instance = feature_class.new
+
+        response = client.use(:test_feature => feature_instance).
+                   request(:get, dummy.endpoint)
+
+        expect(feature_instance.captured_response).to eq(response)
+      end
+
+      it "is given a chance to handle an error" do
+        sleep_url = "#{dummy.endpoint}/sleep"
+        feature_instance = feature_class.new
+
+        expect do
+          client.use(:test_feature => feature_instance).
+            timeout(0.2).
+            request(:post, sleep_url)
+        end.to raise_error(HTTP::TimeoutError)
+
+        expect(feature_instance.captured_error).to be_a(HTTP::TimeoutError)
+        expect(feature_instance.captured_request.verb).to eq(:post)
+        expect(feature_instance.captured_request.uri.to_s).to eq(sleep_url)
+      end
+    end
   end
 
   include_context "HTTP handling" do
@@ -273,7 +354,8 @@ RSpec.describe HTTP::Client do
     let(:client)  { described_class.new(options.merge(extra_options)) }
   end
 
-  describe "working with SSL" do
+  # TODO: https://github.com/httprb/http/issues/627
+  xdescribe "working with SSL" do
     run_server(:dummy_ssl) { DummyServer.new(:ssl => true) }
 
     let(:extra_options) { {} }
@@ -314,6 +396,14 @@ RSpec.describe HTTP::Client do
     it "calls finish_response once body was fully flushed" do
       expect_any_instance_of(HTTP::Connection).to receive(:finish_response).and_call_original
       client.get(dummy.endpoint).to_s
+    end
+
+    it "provides access to the Request from the Response" do
+      unique_value = "20190424"
+      response = client.headers("X-Value" => unique_value).get(dummy.endpoint)
+
+      expect(response.request).to be_a(HTTP::Request)
+      expect(response.request.headers["X-Value"]).to eq(unique_value)
     end
 
     context "with HEAD request" do
@@ -406,7 +496,7 @@ RSpec.describe HTTP::Client do
           BODY
         end
 
-        it "raises HTTP::ConnectionError" do
+        xit "raises HTTP::ConnectionError" do
           expect { client.get(dummy.endpoint).to_s }.to raise_error(HTTP::ConnectionError)
         end
       end

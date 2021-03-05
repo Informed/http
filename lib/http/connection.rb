@@ -3,7 +3,6 @@
 require "forwardable"
 
 require "http/headers"
-require "http/response/parser"
 
 module HTTP
   # A connection to the HTTP server
@@ -68,8 +67,13 @@ module HTTP
     # @param [Request] req Request to send to the server
     # @return [nil]
     def send_request(req)
-      raise StateError, "Tried to send a request while one is pending already. Make sure you read off the body." if @pending_response
-      raise StateError, "Tried to send a request while a response is pending. Make sure you read off the body."  if @pending_request
+      if @pending_response
+        raise StateError, "Tried to send a request while one is pending already. Make sure you read off the body."
+      end
+
+      if @pending_request
+        raise StateError, "Tried to send a request while a response is pending. Make sure you read off the body."
+      end
 
       @pending_request = true
 
@@ -93,7 +97,7 @@ module HTTP
       chunk    = @parser.read(size)
       finish_response if finished
 
-      chunk.to_s
+      chunk || "".b
     end
 
     # Reads data from socket up until headers are loaded

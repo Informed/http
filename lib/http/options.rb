@@ -32,7 +32,7 @@ module HTTP
 
       def def_option(name, reader_only: false, &interpreter)
         defined_options << name.to_sym
-        interpreter ||= lambda { |v| v }
+        interpreter ||= ->(v) { v }
 
         if reader_only
           attr_reader name
@@ -47,7 +47,7 @@ module HTTP
       end
     end
 
-    def initialize(options = {}) # rubocop:disable Style/OptionHash
+    def initialize(options = {})
       defaults = {
         :response           => :auto,
         :proxy              => {},
@@ -111,7 +111,7 @@ module HTTP
                     unless (feature = self.class.available_features[name])
                       argument_error! "Unsupported feature: #{name}"
                     end
-                    feature.new(opts_or_feature)
+                    feature.new(**opts_or_feature)
                   end
       end
     end

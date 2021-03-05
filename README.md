@@ -1,7 +1,7 @@
 # ![http.rb](https://raw.github.com/httprb/http.rb/master/logo.png)
 
-[![Gem Version](https://badge.fury.io/rb/http.svg)](https://rubygems.org/gems/http)
-[![Build Status](https://secure.travis-ci.org/httprb/http.svg?branch=master)](https://travis-ci.org/httprb/http)
+[![Gem Version](https://img.shields.io/gem/v/http?logo=ruby)](https://rubygems.org/gems/http)
+[![Build Status](https://github.com/httprb/http/workflows/CI/badge.svg)](https://github.com/httprb/http/actions?query=workflow:CI)
 [![Code Climate](https://codeclimate.com/github/httprb/http.svg?branch=master)](https://codeclimate.com/github/httprb/http)
 [![Coverage Status](https://coveralls.io/repos/httprb/http/badge.svg?branch=master)](https://coveralls.io/r/httprb/http)
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/httprb/http/blob/master/LICENSE.txt)
@@ -18,13 +18,14 @@ HTTP (The Gem! a.k.a. http.rb) is an easy-to-use client library for making reque
 from Ruby. It uses a simple method chaining system for building requests, similar to
 Python's [Requests].
 
-Under the hood, http.rb uses [http_parser.rb], a fast HTTP parsing native
-extension based on the Node.js parser and a Java port thereof. This library
+Under the hood, via [Ruby FFI bindings][http-parser-ffi], http.rb uses the Node.js
+[http-parser], a fast HTTP parsing native extension. This library
 isn't just yet another wrapper around Net::HTTP. It implements the HTTP protocol
 natively and outsources the parsing to native extensions.
 
 [requests]: http://docs.python-requests.org/en/latest/
-[http_parser.rb]: https://github.com/tmm1/http_parser.rb
+[http-parser]: https://github.com/nodejs/http-parser
+[http-parser-ffi]: https://github.com/cotag/http-parser
 
 
 ## Another Ruby HTTP library? Why should I care?
@@ -114,8 +115,8 @@ for more detailed documentation and usage notes.
 
 The following API documentation is also available:
 
-* [YARD API documentation](http://www.rubydoc.info/gems/http/frames)
-* [Chainable module (all chainable methods)](http://www.rubydoc.info/gems/http/HTTP/Chainable)
+* [YARD API documentation](https://www.rubydoc.info/github/httprb/http)
+* [Chainable module (all chainable methods)](https://www.rubydoc.info/github/httprb/http/HTTP/Chainable)
 
 [documentation]: https://github.com/httprb/http/wiki
 
@@ -164,11 +165,10 @@ and call `#readpartial` on it repeatedly until it returns `nil`:
 This library aims to support and is [tested against][travis] the following Ruby
 versions:
 
-* Ruby 2.3.x
-* Ruby 2.4.x
-* Ruby 2.5.x
-* Ruby 2.6.x
-* JRuby 9.2.x.x
+* Ruby 2.6
+* Ruby 2.7
+* Ruby 3.0
+* JRuby 9.2
 
 If something doesn't work on one of these versions, it's a bug.
 
@@ -198,5 +198,5 @@ dropped.
 
 ## Copyright
 
-Copyright (c) 2011-2018 Tony Arcieri, Alexey V. Zapparov, Erik Michaels-Ober, Zachary Anker.
+Copyright (c) 2011-2019 Tony Arcieri, Alexey V. Zapparov, Erik Michaels-Ober, Zachary Anker.
 See LICENSE.txt for further details.
